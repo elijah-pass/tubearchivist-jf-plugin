@@ -38,7 +38,7 @@ The plugin interacts with TubeArchivist APIs to fetch videos and channels metada
 1. Go to `Dashboard -> Plugins` and click on the `Manage Repositories` button
 2. Add a new repository with the following details:
 - Repository name: `TubeArchivistMetadata`
-- Repository URL: `https://github.com/tubearchivist/tubearchivist-jf-plugin/raw/master/manifest.json`
+- Repository URL: `https://github.com/elijah-pass/tubearchivist-jf-plugin/raw/master/manifest.json`
   ![Add repository](https://github.com/user-attachments/assets/337ba921-bc97-47ea-815c-c664cf7661a2)
 
 3. Go back to the catalog
