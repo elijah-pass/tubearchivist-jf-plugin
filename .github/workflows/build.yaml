@@ -65,6 +65,7 @@ jobs:
       - name: Add Jellyfin GitHub NuGet registry to sources
         run: |
           if ! dotnet nuget update source github \
+            --source https://nuget.pkg.github.com/jellyfin/index.json \
             --username DarkFighterLuke \
             --password "${{ secrets.GITHUB_TOKEN }}" \
             --store-password-in-clear-text; then
@@ -128,8 +129,15 @@ jobs:
           git add manifest.json
           git commit --signoff -m "Update manifest.json"
 
-          if ! git push origin "HEAD:$DEFAULT_BRANCH"; then
+          push_attempts=0
+          until git push origin "HEAD:$DEFAULT_BRANCH"; do
+            push_attempts=$((push_attempts + 1))
+            if [[ "$push_attempts" -ge 3 ]]; then
+              echo "Failed to push manifest update to $DEFAULT_BRANCH after 3 attempts."
+              exit 1
+            fi
+
+            echo "Push failed due to concurrent updates, rebasing and retrying..."
             git fetch origin "$DEFAULT_BRANCH"
             git rebase "origin/$DEFAULT_BRANCH"
-            git push origin "HEAD:$DEFAULT_BRANCH"
-          fi
+          done
