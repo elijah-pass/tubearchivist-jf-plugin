@@ -157,7 +157,7 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.Tasks
                                 var taVideo = await taApi.GetVideo(videoYTId).ConfigureAwait(true);
                                 if (taVideo != null)
                                 {
-                                    var isTAVideoPlayed = taVideo?.Player.IsWatched ?? false;
+                                    var isTAVideoPlayed = taVideo.Player?.IsWatched ?? false;
                                     if (isTAVideoPlayed != isVideoPlayed)
                                     {
                                         statusCode = await taApi.SetWatchedStatus(videoYTId, isVideoPlayed).ConfigureAwait(true);
