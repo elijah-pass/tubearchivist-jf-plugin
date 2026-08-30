@@ -1,9 +1,12 @@
 <h1 align="center">Jellyfin TubeArchivist Plugin</h1>
 
 <p align="center">
-<img alt="Plugin Banner" src="https://raw.githubusercontent.com/tubearchivist/tubearchivist-jf-plugin/master/images/logo.png"/>
+<img alt="Plugin Banner" src="https://raw.githubusercontent.com/elijah-pass/tubearchivist-jf-plugin/master/images/logo.png"/>
 <br/>
 </p>
+
+> [!IMPORTANT]
+> This repository publishes an unofficial downstream build of TubeArchivistMetadata containing locally maintained fixes. It is not affiliated with or supported by the upstream TubeArchivist project. The original project is available at [tubearchivist/tubearchivist-jf-plugin](https://github.com/tubearchivist/tubearchivist-jf-plugin).
 
 > [!IMPORTANT]
 > Jellyfin release cycle has changed in the past few months and now it is shorter than before. The plugin supports only the latest Jellyfin release, in order to continue using this plugin with all the latest features you will need to upgrade your Jellyfin installation.
@@ -34,12 +37,15 @@ The plugin interacts with TubeArchivist APIs to fetch videos and channels metada
 > Enabling synchronization in both directions you can run in race conditions and unexpected results.
 
 ## Installation
-### From official repository (recommended)
+### From this unofficial downstream repository
 1. Go to `Dashboard -> Plugins` and click on the `Manage Repositories` button
 2. Add a new repository with the following details:
-- Repository name: `TubeArchivistMetadata`
-- Repository URL: `https://github.com/tubearchivist/tubearchivist-jf-plugin/raw/master/manifest.json`
+- Repository name: `TubeArchivistMetadata (elijah-pass fork)`
+- Repository URL: `https://raw.githubusercontent.com/elijah-pass/tubearchivist-jf-plugin/master/manifest.json`
   ![Add repository](https://github.com/user-attachments/assets/337ba921-bc97-47ea-815c-c664cf7661a2)
+
+> [!CAUTION]
+> Do not enable this repository and the upstream TubeArchivist plugin repository at the same time. Both catalogs contain the same plugin GUID because this build is intended as a drop-in replacement that preserves existing configuration.
 
 3. Go back to the catalog
 4. Find `TubeArchivistMetadata` and install it
@@ -140,7 +146,8 @@ The options correlate with:
 
 Publishing is automated with the GitHub Actions workflow in `.github/workflows/build.yaml`.
 
-- Create and push a version tag prefixed with `v` (example: `v1.4.5`) to trigger release publishing automatically.
+- Downstream builds use the fourth version component after the upstream version (example: upstream `1.4.4.0` becomes downstream `1.4.4.1`).
+- Create and push a version tag prefixed with `v` (example: `v1.4.4.1`) to trigger release publishing automatically.
 - Or run the workflow manually from the Actions tab and provide a tag value.
 
 ## License
