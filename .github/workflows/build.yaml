@@ -64,7 +64,7 @@ jobs:
 
       - name: Add Jellyfin GitHub NuGet registry to sources
         run: |
-          if dotnet nuget list source | grep -Eq '^[[:space:]]*[0-9]+\.[[:space:]]+github[[:space:]]'; then
+          if dotnet nuget list source | grep -Eq '^[[:space:]]*[0-9]+\.[[:space:]]+github[[:space:]]*\['; then
             dotnet nuget update source github \
               --username DarkFighterLuke \
               --password "${{ secrets.GITHUB_TOKEN }}" \
