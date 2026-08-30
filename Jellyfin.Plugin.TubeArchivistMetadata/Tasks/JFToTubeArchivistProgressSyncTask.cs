@@ -154,25 +154,32 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.Tasks
 
                                 var videoItemData = _userDataManager.GetUserData(user, video);
                                 var isVideoPlayed = video.IsPlayed(user, videoItemData);
-                                var taVideo = await taApi.GetVideo(videoYTId).ConfigureAwait(true);
-                                if (taVideo != null)
+                                try
                                 {
-                                    var isTAVideoPlayed = taVideo.Player?.IsWatched ?? false;
-                                    if (isTAVideoPlayed != isVideoPlayed)
+                                    var taVideo = await taApi.GetVideo(videoYTId).ConfigureAwait(true);
+                                    if (taVideo != null)
                                     {
-                                        statusCode = await taApi.SetWatchedStatus(videoYTId, isVideoPlayed).ConfigureAwait(true);
-                                        if (statusCode != System.Net.HttpStatusCode.OK)
+                                        var isTAVideoPlayed = taVideo.Player?.IsWatched ?? false;
+                                        if (isTAVideoPlayed != isVideoPlayed)
                                         {
-                                            _logger.LogCritical("{Message}", $"POST /watched returned {statusCode} for video {video.Name} ({videoYTId}) with watched status {isVideoPlayed}");
-                                        }
-                                        else
-                                        {
-                                            _logger.LogInformation("Video {VideoId} watch status marked as {Status} in TubeArchivist", videoYTId, isVideoPlayed);
+                                            statusCode = await taApi.SetWatchedStatus(videoYTId, isVideoPlayed).ConfigureAwait(true);
+                                            if (statusCode != System.Net.HttpStatusCode.OK)
+                                            {
+                                                _logger.LogCritical("{Message}", $"POST /watched returned {statusCode} for video {video.Name} ({videoYTId}) with watched status {isVideoPlayed}");
+                                            }
+                                            else
+                                            {
+                                                _logger.LogInformation("Video {VideoId} watch status marked as {Status} in TubeArchivist", videoYTId, isVideoPlayed);
+                                            }
                                         }
                                     }
                                 }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogCritical(ex, "An exception occurred while synchronizing watched status for video {VideoName} ({VideoId})", video.Name, videoYTId);
+                                }
 
-                                _logger.LogDebug("{Message}", isVideoPlayed);
+                                _logger.LogDebug("Video {VideoId} played status in Jellyfin is {IsPlayed}", videoYTId, isVideoPlayed);
                                 if (!isVideoPlayed)
                                 {
                                     var playbackProgress = videoItemData?.PlaybackPositionTicks / TimeSpan.TicksPerSecond;
@@ -188,7 +195,7 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.Tasks
                                         }
                                         catch (Exception ex)
                                         {
-                                            _logger.LogCritical("An exception occurred while calling POST /video/{VideoId}/progress for video {VideoName} with progress {Progress} seconds: {ExceptionMessage}", videoYTId, video.Name, playbackProgress.Value, ex.Message);
+                                            _logger.LogCritical(ex, "An exception occurred while calling POST /video/{VideoId}/progress for video {VideoName} with progress {Progress} seconds", videoYTId, video.Name, playbackProgress.Value);
                                         }
                                     }
                                 }
