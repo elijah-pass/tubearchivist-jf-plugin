@@ -27,12 +27,14 @@ jobs:
 
       - name: Resolve release tag and version
         env:
+          EVENT_NAME: ${{ github.event_name }}
           INPUT_TAG: ${{ github.event.inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             TAG="$INPUT_TAG"
           else
-            TAG="${{ github.ref_name }}"
+            TAG="$REF_NAME"
           fi
 
           if [[ -z "$TAG" ]]; then
@@ -91,4 +93,4 @@ jobs:
         with:
           add: manifest.json
           commit: --signoff
-          message: "Update manifest.json for ${{ env.RELEASE_TAG }}"
+          message: "Update manifest.json"
