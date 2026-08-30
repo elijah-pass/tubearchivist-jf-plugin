@@ -163,7 +163,7 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.Tasks
                                         statusCode = await taApi.SetWatchedStatus(videoYTId, isVideoPlayed).ConfigureAwait(true);
                                         if (statusCode != System.Net.HttpStatusCode.OK)
                                         {
-                                            _logger.LogCritical("{Message}", $"POST /watched returned {statusCode} for video {video.Name} ({videoYTId}) with wacthed status {isVideoPlayed}");
+                                            _logger.LogCritical("{Message}", $"POST /watched returned {statusCode} for video {video.Name} ({videoYTId}) with watched status {isVideoPlayed}");
                                         }
                                         else
                                         {
@@ -175,7 +175,7 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.Tasks
                                 _logger.LogDebug("{Message}", isVideoPlayed);
                                 if (!isVideoPlayed)
                                 {
-                                    var playbackProgress = _userDataManager.GetUserData(user, video)?.PlaybackPositionTicks / TimeSpan.TicksPerSecond;
+                                    var playbackProgress = videoItemData?.PlaybackPositionTicks / TimeSpan.TicksPerSecond;
                                     if (playbackProgress != null)
                                     {
                                         try
@@ -188,7 +188,7 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.Tasks
                                         }
                                         catch (Exception ex)
                                         {
-                                            _logger.LogCritical("An exception occurred while calling POST /video/{VideoId}/progress for for video {VideoName} with progress {Progress} seconds: {ExceptionMessage}", videoYTId, videoYTId, playbackProgress.Value, ex.Message);
+                                            _logger.LogCritical("An exception occurred while calling POST /video/{VideoId}/progress for video {VideoName} with progress {Progress} seconds: {ExceptionMessage}", videoYTId, videoYTId, playbackProgress.Value, ex.Message);
                                         }
                                     }
                                 }
