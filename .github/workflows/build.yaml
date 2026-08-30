@@ -20,21 +20,20 @@ jobs:
       packages: read
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Resolve release tag and version
+        id: release_meta
         env:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_TAG: ${{ github.event.inputs.tag }}
           REF_NAME: ${{ github.ref_name }}
+          REF: ${{ github.ref }}
         run: |
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             TAG="$INPUT_TAG"
+            CHECKOUT_REF="refs/tags/$TAG"
           else
             TAG="$REF_NAME"
+            CHECKOUT_REF="$REF"
           fi
 
           if [[ -z "$TAG" ]]; then
@@ -42,9 +41,21 @@ jobs:
             exit 1
           fi
 
+          if [[ ! "$TAG" =~ ^v[0-9]+(\.[0-9]+){1,3}$ ]]; then
+            echo "Release tag must match v<major>.<minor>[.<patch>[.<build>]]."
+            exit 1
+          fi
+
           VERSION="${TAG#v}"
-          echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "checkout_ref=$CHECKOUT_REF" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.release_meta.outputs.checkout_ref }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -53,7 +64,7 @@ jobs:
 
       - name: Add Jellyfin GitHub NuGet registry to sources
         run: |
-          if dotnet nuget list source | grep -q 'github'; then
+          if dotnet nuget list source | grep -Eq '^[[:space:]]*[0-9]+\.[[:space:]]+github[[:space:]]'; then
             dotnet nuget update source github \
               --username DarkFighterLuke \
               --password "${{ secrets.GITHUB_TOKEN }}" \
@@ -82,7 +93,7 @@ jobs:
         uses: DarkFighterLuke/jellyfin-plugin-repository-manager@7a96768accc155ac7b597351b5033532f3c48173
         with:
           dotnet-target: net9.0
-          version: ${{ env.VERSION }}
+          version: ${{ steps.release_meta.outputs.version }}
           update-manifest: "true"
 
       - name: Create release
@@ -92,12 +103,30 @@ jobs:
           artifacts: ${{ steps.jprm.outputs.artifact }}
           makeLatest: true
           bodyFile: release-changelog.md
-          tag: ${{ env.RELEASE_TAG }}
+          tag: ${{ steps.release_meta.outputs.release_tag }}
           allowUpdates: true
 
-      - name: Commit manifest.json
-        uses: EndBug/add-and-commit@v9
-        with:
-          add: manifest.json
-          commit: --signoff
-          message: "Update manifest.json"
+      - name: Commit manifest.json to default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if git diff --quiet -- manifest.json; then
+            echo "manifest.json unchanged."
+            exit 0
+          fi
+
+          cp manifest.json /tmp/manifest.json
+          git fetch origin "$DEFAULT_BRANCH"
+          git checkout -B "$DEFAULT_BRANCH" "origin/$DEFAULT_BRANCH"
+          cp /tmp/manifest.json manifest.json
+
+          if git diff --quiet -- manifest.json; then
+            echo "No manifest updates to commit on $DEFAULT_BRANCH."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          git commit --signoff -m "Update manifest.json"
+          git push origin "HEAD:$DEFAULT_BRANCH"
