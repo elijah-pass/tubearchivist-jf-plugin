@@ -53,11 +53,18 @@ jobs:
 
       - name: Add Jellyfin GitHub NuGet registry to sources
         run: |
-          dotnet nuget add source \
-            --username DarkFighterLuke \
-            --password "${{ secrets.GITHUB_TOKEN }}" \
-            --store-password-in-clear-text \
-            --name github https://nuget.pkg.github.com/jellyfin/index.json || true
+          if dotnet nuget list source | grep -q 'github'; then
+            dotnet nuget update source github \
+              --username DarkFighterLuke \
+              --password "${{ secrets.GITHUB_TOKEN }}" \
+              --store-password-in-clear-text
+          else
+            dotnet nuget add source \
+              --username DarkFighterLuke \
+              --password "${{ secrets.GITHUB_TOKEN }}" \
+              --store-password-in-clear-text \
+              --name github https://nuget.pkg.github.com/jellyfin/index.json
+          fi
 
       - name: Generate release message
         run: |
