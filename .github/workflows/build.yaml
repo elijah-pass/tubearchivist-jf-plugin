@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - v*
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (example: v1.4.5)"
+        required: true
+        type: string
 
 jobs:
   build:
@@ -17,54 +23,55 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: master
           fetch-depth: 0
 
-      - name: Get release version
-        id: newtag
-        uses: "WyriHaximus/github-action-get-previous-tag@v1"
+      - name: Resolve release tag and version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${{ github.ref_name }}"
+          fi
 
-      - name: Setup .Net
-        uses: actions/setup-dotnet@v1
+          if [[ -z "$TAG" ]]; then
+            echo "Unable to resolve release tag."
+            exit 1
+          fi
+
+          VERSION="${TAG#v}"
+          echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 9.0.x
 
-      - name: Add Jellyfin GitHub Nuget registry to sources
+      - name: Add Jellyfin GitHub NuGet registry to sources
         run: |
           dotnet nuget add source \
             --username DarkFighterLuke \
-            --password ${{ secrets.GITHUB_TOKEN }} \
+            --password "${{ secrets.GITHUB_TOKEN }}" \
             --store-password-in-clear-text \
-            --name github https://nuget.pkg.github.com/jellyfin/index.json
-
-      - name: Get version number only
-        run: |
-          TAG=${{ steps.newtag.outputs.tag }}
-          echo "VERSION=${TAG#v}" >> $GITHUB_ENV
+            --name github https://nuget.pkg.github.com/jellyfin/index.json || true
 
       - name: Generate release message
         run: |
-          # Read the YAML file and extract the value of the 'changelog' field
           changelog=$(awk '/changelog:/ {flag=1; next} /^[^ ]/ {flag=0} flag' build.yaml | awk '{$1=$1};1')
-
-          # Check if changelog contains multiple lines
           if [[ $(echo "$changelog" | wc -l) -gt 1 ]]; then
-              changelog=$(echo "$changelog" | sed 's/^/* /')
+            changelog=$(echo "$changelog" | sed 's/^/* /')
           else
-              changelog="* $changelog"
+            changelog="* $changelog"
           fi
-
-          # Create release-changelog.md
           echo "Changelog:" > release-changelog.md
           echo "$changelog" >> release-changelog.md
 
-
       - name: Build Jellyfin Plugin
-        uses: DarkFighterLuke/jellyfin-plugin-repository-manager@7a96768accc155ac7b597351b5033532f3c48173
         id: jprm
+        uses: DarkFighterLuke/jellyfin-plugin-repository-manager@7a96768accc155ac7b597351b5033532f3c48173
         with:
           dotnet-target: net9.0
-          version: ${VERSION}
+          version: ${{ env.VERSION }}
           update-manifest: "true"
 
       - name: Create release
@@ -72,9 +79,9 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           artifacts: ${{ steps.jprm.outputs.artifact }}
-          makeLatest: latest
+          makeLatest: true
           bodyFile: release-changelog.md
-          tag: ${{ steps.newtag.outputs.tag }}
+          tag: ${{ env.RELEASE_TAG }}
           allowUpdates: true
 
       - name: Commit manifest.json
@@ -82,5 +89,4 @@ jobs:
         with:
           add: manifest.json
           commit: --signoff
-          message: "Update manifest.json"
-          pull: "--no-rebase -X ours origin master"
+          message: "Update manifest.json for ${{ env.RELEASE_TAG }}"

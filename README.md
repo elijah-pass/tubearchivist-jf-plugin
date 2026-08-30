@@ -136,6 +136,13 @@ The options correlate with:
 
 3. Place the dll-file in the `plugins/tubearchivist-jf-plugin` folder (you might need to create the folders) of your Jellyfin installation
 
+## Publish release
+
+Publishing is automated with the GitHub Actions workflow in `.github/workflows/build.yaml`.
+
+- Create and push a version tag prefixed with `v` (example: `v1.4.5`) to trigger release publishing automatically.
+- Or run the workflow manually from the Actions tab and provide a tag value.
+
 ## License
 
 This plugins code and packages are distributed under the GPLv3 License. See [LICENSE](./LICENSE) for more information.
