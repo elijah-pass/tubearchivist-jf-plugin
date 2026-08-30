@@ -183,7 +183,7 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.Tasks
                                             statusCode = await taApi.SetProgress(videoYTId, playbackProgress.Value).ConfigureAwait(true);
                                             if (statusCode != System.Net.HttpStatusCode.OK)
                                             {
-                                                _logger.LogCritical("{Message}", $"POST /video/{videoYTId}/progress returned {statusCode} for video {video.Name} with progress {progress} seconds");
+                                                _logger.LogCritical("{Message}", $"POST /video/{videoYTId}/progress returned {statusCode} for video {video.Name} with progress {playbackProgress.Value} seconds");
                                             }
                                         }
                                         catch (Exception ex)
