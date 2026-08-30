@@ -220,11 +220,7 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata
                 string itemYTId;
                 try
                 {
-                    if (eventArgs.Item is Series)
-                    {
-                        itemYTId = Utils.GetChannelNameFromPath(eventArgs.Item.Path);
-                    }
-                    else if (eventArgs.Item is Episode)
+                    if (eventArgs.Item is Episode)
                     {
                         itemYTId = Utils.GetVideoNameFromPath(eventArgs.Item.Path);
                     }
