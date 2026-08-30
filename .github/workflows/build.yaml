@@ -64,12 +64,10 @@ jobs:
 
       - name: Add Jellyfin GitHub NuGet registry to sources
         run: |
-          if dotnet nuget list source | grep -Eq '^[[:space:]]*[0-9]+\.[[:space:]]+github[[:space:]]*\['; then
-            dotnet nuget update source github \
-              --username DarkFighterLuke \
-              --password "${{ secrets.GITHUB_TOKEN }}" \
-              --store-password-in-clear-text
-          else
+          if ! dotnet nuget update source github \
+            --username DarkFighterLuke \
+            --password "${{ secrets.GITHUB_TOKEN }}" \
+            --store-password-in-clear-text; then
             dotnet nuget add source \
               --username DarkFighterLuke \
               --password "${{ secrets.GITHUB_TOKEN }}" \
@@ -129,4 +127,9 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add manifest.json
           git commit --signoff -m "Update manifest.json"
-          git push origin "HEAD:$DEFAULT_BRANCH"
+
+          if ! git push origin "HEAD:$DEFAULT_BRANCH"; then
+            git fetch origin "$DEFAULT_BRANCH"
+            git rebase "origin/$DEFAULT_BRANCH"
+            git push origin "HEAD:$DEFAULT_BRANCH"
+          fi
