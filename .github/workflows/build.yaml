@@ -63,15 +63,17 @@ jobs:
           dotnet-version: 9.0.x
 
       - name: Add Jellyfin GitHub NuGet registry to sources
+        env:
+          NUGET_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if ! dotnet nuget update source github \
             --source https://nuget.pkg.github.com/jellyfin/index.json \
             --username DarkFighterLuke \
-            --password "${{ secrets.GITHUB_TOKEN }}" \
+            --password "$NUGET_TOKEN" \
             --store-password-in-clear-text; then
             dotnet nuget add source \
               --username DarkFighterLuke \
-              --password "${{ secrets.GITHUB_TOKEN }}" \
+              --password "$NUGET_TOKEN" \
               --store-password-in-clear-text \
               --name github https://nuget.pkg.github.com/jellyfin/index.json
           fi
@@ -129,10 +131,12 @@ jobs:
           git add manifest.json
           git commit --signoff -m "Update manifest.json"
 
-          push_attempts=0
-          until git push origin "HEAD:$DEFAULT_BRANCH"; do
-            push_attempts=$((push_attempts + 1))
-            if [[ "$push_attempts" -ge 3 ]]; then
+          for push_attempt in 1 2 3; do
+            if git push origin "HEAD:$DEFAULT_BRANCH"; then
+              break
+            fi
+
+            if [[ "$push_attempt" -eq 3 ]]; then
               echo "Failed to push manifest update to $DEFAULT_BRANCH after 3 attempts."
               exit 1
             fi
