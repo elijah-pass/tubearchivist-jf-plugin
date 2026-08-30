@@ -188,7 +188,7 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.Tasks
                                         }
                                         catch (Exception ex)
                                         {
-                                            _logger.LogCritical("An exception occurred while calling POST /video/{VideoId}/progress for video {VideoName} with progress {Progress} seconds: {ExceptionMessage}", videoYTId, videoYTId, playbackProgress.Value, ex.Message);
+                                            _logger.LogCritical("An exception occurred while calling POST /video/{VideoId}/progress for video {VideoName} with progress {Progress} seconds: {ExceptionMessage}", videoYTId, video.Name, playbackProgress.Value, ex.Message);
                                         }
                                     }
                                 }
