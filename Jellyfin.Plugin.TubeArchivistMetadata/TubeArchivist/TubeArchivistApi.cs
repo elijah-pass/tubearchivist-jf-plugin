@@ -4,6 +4,7 @@ using System.Data;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.TubeArchivistMetadata.Utilities;
 using MediaBrowser.Model.Playlists;
@@ -17,6 +18,7 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.TubeArchivist
     /// </summary>
     public class TubeArchivistApi
     {
+        private static readonly SemaphoreSlim WatchedStatusLock = new(1, 1);
         private ILogger _logger;
         private HttpClient client;
         private static TubeArchivistApi _taApiInstance = null!;
@@ -195,13 +197,38 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.TubeArchivist
         /// <returns>The response <see cref="HttpStatusCode"/>.</returns>
         public async Task<HttpStatusCode> SetWatchedStatus(string itemId, bool isWatched)
         {
-            var watchedEndpoint = $"/api/watched/";
-            var url = new Uri(Utils.SanitizeUrl(Plugin.Instance!.Configuration.TubeArchivistUrl + watchedEndpoint));
-            var body = JsonConvert.SerializeObject(new Watched(itemId, isWatched));
+            await WatchedStatusLock.WaitAsync().ConfigureAwait(true);
+            try
+            {
+                // Keep the write idempotent at the shared API boundary so no caller can
+                // refresh watched_date by posting a watched value TA already has.
+                var video = await GetVideo(itemId).ConfigureAwait(true);
+                if (video != null && video.Player.IsWatched == isWatched)
+                {
+                    _logger.LogDebug(
+                        "Skipping TubeArchivist watched status update for {ItemId}: status is already {IsWatched}",
+                        itemId,
+                        isWatched);
+                    return HttpStatusCode.OK;
+                }
 
-            var response = await client.PostAsync(url, new StringContent(body, Encoding.UTF8, "application/json")).ConfigureAwait(true);
+                var watchedEndpoint = $"/api/watched/";
+                var url = new Uri(Utils.SanitizeUrl(Plugin.Instance!.Configuration.TubeArchivistUrl + watchedEndpoint));
+                var body = JsonConvert.SerializeObject(new Watched(itemId, isWatched));
 
-            return response.StatusCode;
+                _logger.LogDebug(
+                    "Changing TubeArchivist watched status for {ItemId} from {PreviousStatus} to {IsWatched}",
+                    itemId,
+                    video?.Player.IsWatched,
+                    isWatched);
+                var response = await client.PostAsync(url, new StringContent(body, Encoding.UTF8, "application/json")).ConfigureAwait(true);
+
+                return response.StatusCode;
+            }
+            finally
+            {
+                WatchedStatusLock.Release();
+            }
         }
 
         /// <summary>

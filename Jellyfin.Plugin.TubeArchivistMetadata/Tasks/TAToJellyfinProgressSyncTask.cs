@@ -170,27 +170,34 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.Tasks
                                     if (playbackProgress != null)
                                     {
                                         var userItemData = _userDataManager.GetUserData(user, video);
+                                        var playbackPositionTicks = playbackProgress.Position * TimeSpan.TicksPerSecond;
+                                        var taVideoInfo = await taApi.GetVideo(Utils.GetVideoNameFromPath(video.Path)).ConfigureAwait(true);
+                                        var isProgressChanged = userItemData?.PlaybackPositionTicks != playbackPositionTicks;
+                                        var isWatchedChanged = taVideoInfo != null && userItemData?.Played != taVideoInfo.Player.IsWatched;
+                                        if (!isProgressChanged && !isWatchedChanged)
+                                        {
+                                            _logger.LogDebug(
+                                                "Skipping unchanged TubeArchivist->Jellyfin user data for video {VideoName} and user {Username}",
+                                                video.Name,
+                                                jfUsername);
+                                            processedVideosCount++;
+                                            progress.Report(processedVideosCount * 100 / videosCount);
+                                            continue;
+                                        }
+
                                         var userUpdateData = new UpdateUserItemDataDto
                                         {
-                                            PlaybackPositionTicks = playbackProgress.Position * TimeSpan.TicksPerSecond
+                                            PlaybackPositionTicks = playbackPositionTicks
                                         };
 
-                                        var taVideoInfo = await taApi.GetVideo(Utils.GetVideoNameFromPath(video.Path)).ConfigureAwait(true);
                                         if (taVideoInfo != null)
                                         {
-                                            if (taVideoInfo.Player.IsWatched)
-                                            {
-                                                userUpdateData.Played = true;
-                                            }
-                                            else
-                                            {
-                                                userUpdateData.Played = false;
-                                            }
+                                            userUpdateData.Played = taVideoInfo.Player.IsWatched;
                                         }
 
                                         _userDataManager.SaveUserData(user, video, userUpdateData, UserDataSaveReason.UpdateUserData);
-                                        _logger.LogInformation("{Message}", $"Playback progress for video {video.Name} set to {userItemData?.PlaybackPositionTicks / TimeSpan.TicksPerSecond} seconds for user {jfUsername}.");
-                                        _logger.LogInformation("{Message}", $"Watched status for video {video.Name} set to {userItemData?.Played} seconds for user {jfUsername}.");
+                                        _logger.LogInformation("Playback progress for video {VideoName} set to {Progress} seconds for user {Username}.", video.Name, playbackProgress.Position, jfUsername);
+                                        _logger.LogInformation("Watched status for video {VideoName} set to {WatchedStatus} for user {Username}.", video.Name, taVideoInfo?.Player.IsWatched, jfUsername);
 
                                         processedVideosCount++;
                                         progress.Report(processedVideosCount * 100 / videosCount);

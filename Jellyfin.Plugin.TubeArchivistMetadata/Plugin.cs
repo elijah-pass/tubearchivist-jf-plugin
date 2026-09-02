@@ -16,6 +16,7 @@ using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Playlists;
 using MediaBrowser.Controller.Session;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Serialization;
 using MediaBrowser.Model.Tasks;
@@ -195,6 +196,19 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata
                 return;
             }
 
+            // UserDataSaved is raised for progress, rating, import, and API-driven saves too.
+            // In particular, the TA->JF scheduled task uses UpdateUserData. Treating every
+            // save as a watched-state change creates a feedback loop back to TubeArchivist.
+            if (eventArgs.SaveReason != UserDataSaveReason.TogglePlayed
+                && eventArgs.SaveReason != UserDataSaveReason.PlaybackFinished)
+            {
+                Logger.LogDebug(
+                    "Skipping watched status synchronization for item {ItemName}: save reason {SaveReason} does not represent a watched-state transition",
+                    eventArgs.Item.Name,
+                    eventArgs.SaveReason);
+                return;
+            }
+
             var topParent = eventArgs.Item.GetTopParent();
             var user = _userManager.GetUserById(eventArgs.UserId);
             if (
@@ -216,7 +230,12 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata
             {
                 var userItemData = _userDataManager.GetUserData(user, eventArgs.Item);
                 var isPlayed = eventArgs.Item.IsPlayed(user, userItemData);
-                Logger.LogDebug("User {UserId} changed watched status to {Status} for the item {ItemName}", eventArgs.UserId, isPlayed, eventArgs.Item.Name);
+                Logger.LogDebug(
+                    "Synchronizing watched-state transition for user {UserId}, item {ItemName}, status {Status}, save reason {SaveReason}",
+                    eventArgs.UserId,
+                    eventArgs.Item.Name,
+                    isPlayed,
+                    eventArgs.SaveReason);
                 string itemYTId;
                 try
                 {
