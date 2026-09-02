@@ -9,6 +9,14 @@
         "imageUrl": "https://raw.githubusercontent.com/elijah-pass/tubearchivist-jf-plugin/master/images/logo.png",
         "versions": [
             {
+                "version": "1.4.4.2",
+                "changelog": "Prevent watched-state synchronization feedback loops from repeatedly resetting TubeArchivist watched dates\n",
+                "targetAbi": "10.11.0.0",
+                "sourceUrl": "https://github.com/elijah-pass/tubearchivist-jf-plugin/releases/download/v1.4.4.2/tubearchivistmetadata_1.4.4.2.zip",
+                "checksum": "ea86a01a4643c843e04beb9c7f5156df",
+                "timestamp": "2026-09-02T14:26:12Z"
+            },
+            {
                 "version": "1.4.4.1",
                 "changelog": "Stop Jellyfin to TubeArchivist synchronization from resetting watched timestamps\n",
                 "targetAbi": "10.11.0.0",
