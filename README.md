@@ -9,12 +9,7 @@
 > This repository publishes an unofficial downstream build of TubeArchivistMetadata containing locally maintained fixes. It is not affiliated with or supported by the upstream TubeArchivist project. The original project is available at [tubearchivist/tubearchivist-jf-plugin](https://github.com/tubearchivist/tubearchivist-jf-plugin).
 
 > [!IMPORTANT]
-> Jellyfin release cycle has changed in the past few months and now it is shorter than before. The plugin supports only the latest Jellyfin release, in order to continue using this plugin with all the latest features you will need to upgrade your Jellyfin installation.
-> The same rule applies to TubeArchivist: the plugin is only guaranteed to work with the latest TubeArchivist version.
-
-> [!WARNING]
-> Jellyfin 10.10 introduced a bug that prevents the plugin to correctly create Season folders by year. The bug has been finally solved on the Jellyfin codebase, but, until the next minor release, a manual build of the Jellyfin branch `release-10.10.z` is required in order to get the fix running.<br>
-> This is not a plugin bug, any issue opened about this bug will be immediately closed!
+> Version `1.5.0.1` targets Jellyfin `12.0` and requires .NET `10`. For Jellyfin `10.11`, use downstream version `1.4.4.2` instead.
 
 ## About
 
@@ -53,9 +48,22 @@ The plugin interacts with TubeArchivist APIs to fetch videos and channels metada
 5. Restart Jellyfin to apply the changes
 
 ### From ZIP in GitHub releases
-1. Download the latest available release (`tubearchivistmetadata_*.zip`) from the repository releases section
-2. Extract the contained files in the `plugins/TubeArchivistMetadata` folder (you might need to create the folders) of your Jellyfin installation
-3. Restart Jellyfin to apply the changes
+1. Download a compatible release (`tubearchivistmetadata_*.zip`) from this fork's [releases](https://github.com/elijah-pass/tubearchivist-jf-plugin/releases).
+2. Stop Jellyfin before changing plugin files.
+3. Extract the complete package into a single `plugins/TubeArchivistMetadata` folder (create it if needed).
+4. Start Jellyfin to apply the changes. See the upgrade guidance below if another TubeArchivist plugin build is already installed.
+
+### Upgrade and recover missing metadata
+
+This fork retains the upstream plugin GUID and configuration identity so existing settings can be reused. Before upgrading, back up Jellyfin's configuration, including plugin settings, and check the Jellyfin version required by the release.
+
+1. Disable the upstream TubeArchivist repository and keep this fork's repository enabled, then install the compatible release. If installing manually, stop Jellyfin first, move older TubeArchivist plugin folders outside the `plugins` directory, and install the complete new package in one folder. Older folders may contain spaces or version suffixes; there must be only one active copy of `Jellyfin.Plugin.TubeArchivistMetadata.dll`. Keep the existing plugin configuration XML.
+2. Restart Jellyfin and confirm that the dashboard lists one `TubeArchivistMetadata` plugin with the expected version. Check the collection display name, TubeArchivist address, API key, and synchronization settings.
+3. In the TubeArchivist library settings, enable the `TubeArchivist` metadata and image providers for shows and episodes. The collection display name in plugin settings must match this library's name.
+4. For a channel with missing titles, descriptions, thumbnails, or year seasons, run **Refresh metadata** on the channel and choose **Replace all metadata**. Run the same refresh on the whole TubeArchivist library to repair all affected channels. Select **Replace existing images** if thumbnails need refreshing too, and wait for the refresh to finish.
+5. Verify that videos have titles and are grouped under their publication-year seasons. Refresh the channel or library, rather than only an individual video, when repairing season grouping.
+
+The metadata refresh repairs Jellyfin's library records; leave the TubeArchivist media directories in their existing layout. If the plugin fails to load, stop Jellyfin and restore the previous compatible plugin package and backed-up settings.
 
 ## Configuration
 <p>This plugin requires that you have already an instance of TubeArchivist up and running.</p>
@@ -133,22 +141,25 @@ The options correlate with:
 
 ## Build
 
-1. To build this plugin you will need [.Net 9.x](https://dotnet.microsoft.com/download/dotnet/9.0).
+1. Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0). This build targets Jellyfin `12.0` (plugin ABI `12.0.0.0`).
 
-2. Build plugin with following command
-  ```
-  $ dotnet publish Jellyfin.Plugin.TubeArchivistMetadata --configuration Release --output bin
-  ```
+2. Run the validation harness, then publish the plugin:
 
-3. Place the dll-file in the `plugins/tubearchivist-jf-plugin` folder (you might need to create the folders) of your Jellyfin installation
+   ```sh
+   dotnet run --project validation/Validation.csproj --configuration Release
+   dotnet publish Jellyfin.Plugin.TubeArchivistMetadata --configuration Release --output bin
+   ```
+
+3. Stop Jellyfin and place `bin/Jellyfin.Plugin.TubeArchivistMetadata.dll` in a single `plugins/TubeArchivistMetadata` folder. Follow the upgrade guidance above to remove duplicate plugin copies while retaining configuration, then start Jellyfin.
 
 ## Publish release
 
 Publishing is automated with the GitHub Actions workflow in `.github/workflows/build.yaml`.
 
-- Downstream builds use the fourth version component after the upstream version (example: upstream `1.4.4.0` becomes downstream `1.4.4.1`).
-- Create and push a version tag prefixed with `v` (example: `v1.4.4.1`) to trigger release publishing automatically.
-- Or run the workflow manually from the Actions tab and provide a tag value.
+- Downstream builds use the fourth version component after the upstream version (example: upstream `1.5.0.0` becomes downstream `1.5.0.1`). Keep `build.yaml` and all three version fields in `Directory.Build.props` aligned.
+- Create and push a version tag prefixed with `v` (example: `v1.5.0.1`) to trigger release publishing automatically.
+- Or run the workflow manually from the Actions tab and provide an existing tag value.
+- The workflow validates the repair, builds the tagged source, uploads the ZIP to this fork's release, and commits the generated catalog entry and checksum to the default branch. Keep historical catalog entries; add the new version only after its release artifact exists.
 
 ## License
 

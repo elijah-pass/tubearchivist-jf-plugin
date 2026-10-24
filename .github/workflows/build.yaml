@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to publish (example: v1.4.5)"
+        description: "Release tag to publish (example: v1.5.0.1)"
         required: true
         type: string
 
@@ -60,7 +60,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: 10.0.x
 
       - name: Add Jellyfin GitHub NuGet registry to sources
         env:
@@ -80,6 +80,9 @@ jobs:
               --name github https://nuget.pkg.github.com/jellyfin/index.json
           fi
 
+      - name: Validate metadata repair and synchronization
+        run: dotnet run --project validation/Validation.csproj --configuration Release
+
       - name: Generate release message
         run: |
           changelog=$(awk '/changelog:/ {flag=1; next} /^[^ ]/ {flag=0} flag' build.yaml | awk '{$1=$1};1')
@@ -95,7 +98,7 @@ jobs:
         id: jprm
         uses: DarkFighterLuke/jellyfin-plugin-repository-manager@7a96768accc155ac7b597351b5033532f3c48173
         with:
-          dotnet-target: net9.0
+          dotnet-target: net10.0
           version: ${{ steps.release_meta.outputs.version }}
           update-manifest: "true"
 

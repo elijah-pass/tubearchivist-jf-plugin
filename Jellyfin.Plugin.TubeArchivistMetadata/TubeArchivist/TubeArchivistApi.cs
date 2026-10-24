@@ -18,9 +18,17 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.TubeArchivist
     /// </summary>
     public class TubeArchivistApi
     {
-        private static readonly SemaphoreSlim WatchedStatusLock = new(1, 1);
-        private ILogger _logger;
-        private HttpClient client;
+        private static readonly SemaphoreSlim WatchedStatusLock = new SemaphoreSlim(1, 1);
+        private static readonly HttpClient UnauthenticatedImageClient = new HttpClient(new HttpClientHandler
+        {
+            AllowAutoRedirect = false,
+            CheckCertificateRevocationList = true
+        });
+
+        private readonly ILogger _logger;
+        private readonly HttpClient client;
+        private readonly HttpClient _unauthenticatedImageClient;
+        private readonly Func<string> _baseUrlProvider;
         private static TubeArchivistApi _taApiInstance = null!;
 
         /// <summary>
@@ -28,17 +36,37 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.TubeArchivist
         /// </summary>
         /// <param name="httpClient">HTTP client to make requests to TubeArchivist API.</param>
         private TubeArchivistApi(HttpClient httpClient)
+            : this(
+                httpClient,
+                () => Plugin.Instance?.Configuration.TubeArchivistUrl ?? string.Empty,
+                Plugin.Instance?.Logger ?? throw new DataException("Uninitialized plugin!"))
         {
-            if (Plugin.Instance == null)
-            {
-                throw new DataException("Uninitialized plugin!");
-            }
-            else
-            {
-                _logger = Plugin.Instance.Logger;
-            }
+        }
 
-            client = httpClient;
+        /// <summary>
+        /// Initializes a new instance of the <see cref="TubeArchivistApi"/> class with explicit dependencies.
+        /// </summary>
+        /// <param name="httpClient">HTTP client to make requests to TubeArchivist API.</param>
+        /// <param name="baseUrlProvider">Provides the current TubeArchivist base URL.</param>
+        /// <param name="logger">Logger used for API diagnostics.</param>
+        internal TubeArchivistApi(HttpClient httpClient, Func<string> baseUrlProvider, ILogger logger)
+            : this(httpClient, baseUrlProvider, logger, UnauthenticatedImageClient)
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="TubeArchivistApi"/> class with explicit image download dependencies.
+        /// </summary>
+        /// <param name="httpClient">Authenticated HTTP client for TubeArchivist API and images.</param>
+        /// <param name="baseUrlProvider">Provides the current TubeArchivist base URL.</param>
+        /// <param name="logger">Logger used for API diagnostics.</param>
+        /// <param name="unauthenticatedImageClient">HTTP client without authentication or redirects for external images.</param>
+        internal TubeArchivistApi(HttpClient httpClient, Func<string> baseUrlProvider, ILogger logger, HttpClient unauthenticatedImageClient)
+        {
+            client = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+            _baseUrlProvider = baseUrlProvider ?? throw new ArgumentNullException(nameof(baseUrlProvider));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _unauthenticatedImageClient = unauthenticatedImageClient ?? throw new ArgumentNullException(nameof(unauthenticatedImageClient));
         }
 
         /// <summary>
@@ -72,7 +100,7 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.TubeArchivist
             Channel? channel = null;
 
             var channelsEndpoint = "/api/channel/";
-            var url = new Uri(Utils.SanitizeUrl(Plugin.Instance?.Configuration.TubeArchivistUrl + channelsEndpoint + channelId));
+            var url = BuildUrl(channelsEndpoint + channelId);
             var response = await client.GetAsync(url).ConfigureAwait(true);
             while (response.StatusCode == HttpStatusCode.Moved)
             {
@@ -102,7 +130,7 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.TubeArchivist
             Video? video = null;
 
             var videosEndpoint = "/api/video/";
-            var url = new Uri(Utils.SanitizeUrl(Plugin.Instance?.Configuration.TubeArchivistUrl + videosEndpoint + videoId));
+            var url = BuildUrl(videosEndpoint + videoId);
             var response = await client.GetAsync(url).ConfigureAwait(true);
             while (response.StatusCode == HttpStatusCode.Moved)
             {
@@ -132,7 +160,7 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.TubeArchivist
             PingResponse? pong = null;
 
             var pingEndpoint = "/api/ping/";
-            var url = new Uri(Utils.SanitizeUrl(Plugin.Instance!.Configuration.TubeArchivistUrl + pingEndpoint));
+            var url = BuildUrl(pingEndpoint);
             var response = await client.GetAsync(url).ConfigureAwait(true);
 
             while (response.StatusCode == HttpStatusCode.Moved)
@@ -162,7 +190,7 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.TubeArchivist
         public async Task<HttpStatusCode> SetProgress(string videoId, long progress)
         {
             var progressEndpoint = $"/api/video/{videoId}/progress/";
-            var url = new Uri(Utils.SanitizeUrl(Plugin.Instance!.Configuration.TubeArchivistUrl + progressEndpoint));
+            var url = BuildUrl(progressEndpoint);
             var body = JsonConvert.SerializeObject(new Progress(progress));
 
             var response = await client.PostAsync(url, new StringContent(body, Encoding.UTF8, "application/json")).ConfigureAwait(true);
@@ -200,8 +228,8 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.TubeArchivist
             await WatchedStatusLock.WaitAsync().ConfigureAwait(true);
             try
             {
-                // Keep the write idempotent at the shared API boundary so no caller can
-                // refresh watched_date by posting a watched value TA already has.
+                // Repeated writes reset TubeArchivist's watched_date. Preserve
+                // the existing downstream guard at the shared API boundary.
                 var video = await GetVideo(itemId).ConfigureAwait(true);
                 if (video != null && video.Player.IsWatched == isWatched)
                 {
@@ -213,9 +241,8 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.TubeArchivist
                 }
 
                 var watchedEndpoint = $"/api/watched/";
-                var url = new Uri(Utils.SanitizeUrl(Plugin.Instance!.Configuration.TubeArchivistUrl + watchedEndpoint));
+                var url = BuildUrl(watchedEndpoint);
                 var body = JsonConvert.SerializeObject(new Watched(itemId, isWatched));
-
                 _logger.LogDebug(
                     "Changing TubeArchivist watched status for {ItemId} from {PreviousStatus} to {IsWatched}",
                     itemId,
@@ -240,13 +267,13 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.TubeArchivist
             ResponseContainer<ISet<Playlist>?>? playlists = null;
 
             var playlistsEndpoint = "/api/playlist/";
-            var url = new Uri(Utils.SanitizeUrl(Plugin.Instance?.Configuration.TubeArchivistUrl + playlistsEndpoint));
+            var url = BuildUrl(playlistsEndpoint);
             var response = await client.GetAsync(url).ConfigureAwait(true);
             while (response.StatusCode == HttpStatusCode.Moved)
             {
                 url = response.Headers.Location;
                 _logger.LogInformation("{Message}", "Received redirect to: " + url);
-                response = await client.GetAsync(Utils.SanitizeUrl(Plugin.Instance?.Configuration.TubeArchivistUrl + url)).ConfigureAwait(true);
+                response = await client.GetAsync(url).ConfigureAwait(true);
             }
 
             _logger.LogInformation("{Message}", url + ": " + response.StatusCode);
@@ -263,13 +290,13 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.TubeArchivist
                     while (playlists.Paginate.CurrentPage < lastPage)
                     {
                         var nextPage = playlists.Paginate.CurrentPage + 1;
-                        var pagedUrl = new Uri(Utils.SanitizeUrl(Plugin.Instance?.Configuration.TubeArchivistUrl + playlistsEndpoint + "?page=" + nextPage));
+                        var pagedUrl = BuildUrl(playlistsEndpoint + "?page=" + nextPage);
                         response = await client.GetAsync(pagedUrl).ConfigureAwait(true);
                         while (response.StatusCode == HttpStatusCode.Moved)
                         {
                             url = response.Headers.Location;
                             _logger.LogInformation("{Message}", "Received redirect to: " + url);
-                            response = await client.GetAsync(Utils.SanitizeUrl(Plugin.Instance?.Configuration.TubeArchivistUrl + url)).ConfigureAwait(true);
+                            response = await client.GetAsync(url).ConfigureAwait(true);
                         }
 
                         _logger.LogInformation("{Message}", pagedUrl + ": " + response.StatusCode);
@@ -313,7 +340,7 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.TubeArchivist
         {
             Playlist? playlist = null;
             var customPlaylistEndpoint = $"/api/playlist/custom/";
-            var url = new Uri(Utils.SanitizeUrl(Plugin.Instance!.Configuration.TubeArchivistUrl + customPlaylistEndpoint));
+            var url = BuildUrl(customPlaylistEndpoint);
             var body = JsonConvert.SerializeObject(creationRequest);
             _logger.LogInformation("{Message}", body);
 
@@ -338,7 +365,7 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.TubeArchivist
         public async Task<HttpStatusCode> CustomPlaylistEntryAction(string playlistId, CustomPlaylistEntryAction entryAction)
         {
             var customPlaylistEndpoint = $"/api/playlist/custom/";
-            var url = new Uri(Utils.SanitizeUrl(Plugin.Instance!.Configuration.TubeArchivistUrl + customPlaylistEndpoint + playlistId));
+            var url = BuildUrl(customPlaylistEndpoint + playlistId);
             var body = JsonConvert.SerializeObject(entryAction);
             _logger.LogDebug("CustomPlaylistEntryAction body: {Message}", body);
 
@@ -356,11 +383,50 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata.TubeArchivist
         public async Task<bool> DeletePlaylist(string playlistId)
         {
             var deletePlaylistEndpoint = $"/api/playlist/";
-            var url = new Uri(Utils.SanitizeUrl(Plugin.Instance!.Configuration.TubeArchivistUrl + deletePlaylistEndpoint + playlistId));
+            var url = BuildUrl(deletePlaylistEndpoint + playlistId);
             var response = await client.DeleteAsync(url).ConfigureAwait(true);
             _logger.LogDebug("Response code: {Message}", response.StatusCode);
 
-            return response.StatusCode == HttpStatusCode.NoContent;
+            return response.IsSuccessStatusCode;
+        }
+
+        private Uri BuildUrl(string endpoint)
+        {
+            return new Uri(Utils.SanitizeUrl(_baseUrlProvider() + endpoint));
+        }
+
+        /// <summary>
+        /// Resolves a TubeArchivist image path to an absolute URL.
+        /// </summary>
+        /// <param name="imageUrl">An absolute URL or a TubeArchivist-relative image path.</param>
+        /// <returns>An absolute image URL.</returns>
+        internal Uri BuildImageUrl(string imageUrl)
+        {
+            if (Uri.TryCreate(imageUrl, UriKind.Absolute, out var absoluteUrl)
+                && (absoluteUrl.Scheme == Uri.UriSchemeHttp || absoluteUrl.Scheme == Uri.UriSchemeHttps))
+            {
+                return absoluteUrl;
+            }
+
+            var baseUrl = new Uri(Utils.SanitizeUrl(_baseUrlProvider()));
+            return new Uri(baseUrl, imageUrl.TrimStart('/'));
+        }
+
+        /// <summary>
+        /// Downloads artwork, authenticating only requests to the configured TubeArchivist origin.
+        /// </summary>
+        /// <param name="imageUrl">An absolute URL or a TubeArchivist-relative image path.</param>
+        /// <param name="cancellationToken">Token used to cancel the image request.</param>
+        /// <returns>The image response.</returns>
+        public Task<HttpResponseMessage> GetImageResponse(string imageUrl, CancellationToken cancellationToken)
+        {
+            var url = BuildImageUrl(imageUrl);
+            var baseUrl = new Uri(Utils.SanitizeUrl(_baseUrlProvider()));
+            var sameOrigin = string.Equals(url.Scheme, baseUrl.Scheme, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(url.IdnHost, baseUrl.IdnHost, StringComparison.OrdinalIgnoreCase)
+                && url.Port == baseUrl.Port;
+            var imageClient = sameOrigin ? client : _unauthenticatedImageClient;
+            return imageClient.GetAsync(url, cancellationToken);
         }
     }
 }

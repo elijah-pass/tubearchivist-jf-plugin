@@ -8,7 +8,7 @@ namespace Jellyfin.Plugin.TubeArchivistMetadata
         /// <summary>
         /// Plugin name.
         /// </summary>
-        public const string PluginName = "TubeArchivist Metadata";
+        public const string PluginName = "TubeArchivistMetadata";
 
         /// <summary>
         /// Plugin GUID.
